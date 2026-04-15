@@ -1,0 +1,57 @@
+[
+  {
+    "row_id": 1,
+    "title": "Композиция с красной линией",
+    "author": "Анна Иванова",
+    "technique": "Холст, акрил",
+    "size": "80 x 60 см",
+    "year": "2024",
+    "price": "250 000 ₽",
+    "image_url": "https://example.com/sample-artwork.jpg",
+    "airtable_record_id": "rec_sample_1"
+  },
+  {
+    "row_id": 2,
+    "title": "Без названия",
+    "author": "Петр Орлов",
+    "technique": "Бумага, тушь",
+    "size": "42 x 30 см",
+    "year": "2023",
+    "price": "90 000 ₽",
+    "image_url": null,
+    "airtable_record_id": "rec_sample_2"
+  },
+  {
+    "row_id": 3,
+    "title": "Фрагмент памяти",
+    "author": null,
+    "technique": null,
+    "size": "100 x 100 см",
+    "year": null,
+    "price": null,
+    "image_url": null,
+    "airtable_record_id": "rec_sample_3"
+  },
+  {
+    "row_id": 4,
+    "title": "Дубликат A",
+    "author": "Тест",
+    "technique": "Тест",
+    "size": "10 x 10 см",
+    "year": "2026",
+    "price": "1 ₽",
+    "image_url": null,
+    "airtable_record_id": "rec_duplicate_a"
+  },
+  {
+    "row_id": 4,
+    "title": "Дубликат B",
+    "author": "Тест",
+    "technique": "Тест",
+    "size": "10 x 10 см",
+    "year": "2026",
+    "price": "1 ₽",
+    "image_url": null,
+    "airtable_record_id": "rec_duplicate_b"
+  }
+]

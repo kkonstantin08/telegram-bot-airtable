@@ -1,0 +1,9 @@
+services:
+  artbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    restart: unless-stopped
+    init: true
