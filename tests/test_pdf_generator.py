@@ -1,5 +1,5 @@
 from artbot.domain import Artwork
-from artbot.pdf_generator import generate_artwork_pdf
+from artbot.pdf_generator import _details_table, generate_artwork_pdf
 
 
 def test_pdf_generation_without_image_produces_pdf_bytes() -> None:
@@ -44,3 +44,20 @@ def test_pdf_generation_with_long_and_special_text_does_not_fail() -> None:
 
     assert pdf_bytes.startswith(b"%PDF")
     assert len(pdf_bytes) > 1000
+
+
+def test_pdf_details_table_does_not_include_price() -> None:
+    artwork = Artwork(
+        row_id=6,
+        title="Object",
+        author="Artist",
+        technique="Canvas",
+        size="10 x 20 cm",
+        year="2026",
+        price="999999",
+        image_url=None,
+    )
+
+    table = _details_table(artwork, "Helvetica", "Helvetica-Bold")
+
+    assert len(table._cellvalues) == 4

@@ -110,7 +110,6 @@ def _details_table(artwork: Artwork, font_name: str, bold_font_name: str) -> Tab
         [_paragraph("Техника", label_style), _paragraph(_value(artwork.technique), value_style)],
         [_paragraph("Размер", label_style), _paragraph(_value(artwork.size), value_style)],
         [_paragraph("Год", label_style), _paragraph(_value(artwork.year), value_style)],
-        [_paragraph("Цена", label_style), _paragraph(_value(artwork.price), value_style)],
     ]
     table = Table(data, colWidths=[36 * mm, 120 * mm], hAlign="LEFT")
     table.setStyle(
