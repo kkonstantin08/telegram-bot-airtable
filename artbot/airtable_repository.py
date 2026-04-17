@@ -48,6 +48,29 @@ class AirtableArtworkRepository(ArtworkRepository):
             matched_count=1,
         )
 
+    def find_by_author_query(self, query: str) -> list[Artwork]:
+        normalized_query = query.strip().lower()
+        formula = (
+            f'FIND("{_escape_formula_string(normalized_query)}", '
+            f"LOWER({{{self.fields.author}}} & \"\")) > 0"
+        )
+        logger.info("Looking up Airtable records by author query=%s", normalized_query)
+
+        records = self.table.all(formula=formula)
+        artworks: list[Artwork] = []
+        for record in records:
+            row_id = _extract_row_id(record, self.fields)
+            if row_id is None:
+                logger.error(
+                    "Skipping Airtable record with missing/invalid row ID: record_id=%s field=%s",
+                    record.get("id"),
+                    self.fields.row_id,
+                )
+                continue
+            artworks.append(_record_to_artwork(record, row_id, self.fields))
+
+        return sorted(artworks, key=lambda artwork: artwork.row_id)
+
 
 def _record_to_artwork(
     record: dict[str, Any],
@@ -66,6 +89,23 @@ def _record_to_artwork(
         image_url=_extract_image_url(values.get(fields.image)),
         airtable_record_id=record.get("id"),
     )
+
+
+def _extract_row_id(record: dict[str, Any], fields: AirtableFieldMapping) -> int | None:
+    value = record.get("fields", {}).get(fields.row_id)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip().isdecimal():
+        return int(value.strip())
+    return None
+
+
+def _escape_formula_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _to_text(value: Any) -> str | None:

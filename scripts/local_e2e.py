@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 
 from artbot.handlers import process_user_text, send_help_message, send_start_message
 from artbot.mock_repository import MemoryArtworkRepository, load_artworks_from_fixture
-from artbot.pdf_generator import generate_artwork_pdf
+from artbot.pdf_generator import generate_artwork_pdf, generate_artworks_pdf
 
 logging.getLogger("artbot.handlers").setLevel(logging.CRITICAL)
 
@@ -25,6 +25,11 @@ logging.getLogger("artbot.handlers").setLevel(logging.CRITICAL)
 def local_pdf_generator(*args: Any, **kwargs: Any) -> bytes:
     artwork = replace(args[0], image_url=None)
     return generate_artwork_pdf(artwork)
+
+
+def local_artworks_pdf_generator(*args: Any, **kwargs: Any) -> bytes:
+    artworks = [replace(artwork, image_url=None) for artwork in args[0]]
+    return generate_artworks_pdf(artworks)
 
 
 class FakeMessage:
@@ -64,8 +69,10 @@ async def main() -> None:
         ("existing_without_image", "2"),
         ("partial_data", "3"),
         ("duplicate_id", "4"),
+        ("author_search", "Иванова"),
+        ("author_not_found", "Сидоров"),
+        ("short_author_query", "x"),
         ("not_found", "999"),
-        ("not_number", "abc"),
     ]
 
     for name, text in scenarios:
@@ -75,7 +82,12 @@ async def main() -> None:
         elif name == "help":
             await send_help_message(message)
         else:
-            await process_user_text(message, repository=repository, pdf_generator=local_pdf_generator)
+            await process_user_text(
+                message,
+                repository=repository,
+                pdf_generator=local_pdf_generator,
+                artworks_pdf_generator=local_artworks_pdf_generator,
+            )
         print(f"\n[{name}]")
         for event in message.events:
             print(json.dumps(event, ensure_ascii=True))

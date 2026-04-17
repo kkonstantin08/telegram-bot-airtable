@@ -53,5 +53,16 @@
     "price": "1 ₽",
     "image_url": null,
     "airtable_record_id": "rec_duplicate_b"
+  },
+  {
+    "row_id": 5,
+    "title": "Свет внутри формы",
+    "author": "Анна Иванова",
+    "technique": "Холст, масло",
+    "size": "60 x 50 см",
+    "year": "2022",
+    "price": "180 000 ₽",
+    "image_url": null,
+    "airtable_record_id": "rec_sample_5"
   }
 ]

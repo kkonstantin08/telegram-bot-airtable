@@ -1,5 +1,5 @@
 from artbot.domain import Artwork
-from artbot.pdf_generator import _details_table, generate_artwork_pdf
+from artbot.pdf_generator import _artwork_text_lines, generate_artwork_pdf, generate_artworks_pdf
 
 
 def test_pdf_generation_without_image_produces_pdf_bytes() -> None:
@@ -46,7 +46,7 @@ def test_pdf_generation_with_long_and_special_text_does_not_fail() -> None:
     assert len(pdf_bytes) > 1000
 
 
-def test_pdf_details_table_does_not_include_price() -> None:
+def test_pdf_text_lines_include_values_without_labels_or_price() -> None:
     artwork = Artwork(
         row_id=6,
         title="Object",
@@ -58,6 +58,23 @@ def test_pdf_details_table_does_not_include_price() -> None:
         image_url=None,
     )
 
-    table = _details_table(artwork, "Helvetica", "Helvetica-Bold")
+    values = [value for value, _style in _artwork_text_lines(artwork)]
 
-    assert len(table._cellvalues) == 4
+    assert values == ["Object", "Artist", "Canvas", "10 x 20 cm", "2026"]
+    assert "999999" not in values
+    assert "Автор" not in values
+    assert "Техника" not in values
+    assert "Размер" not in values
+    assert "Год" not in values
+
+
+def test_multi_artwork_pdf_generation_produces_pdf_bytes() -> None:
+    artworks = [
+        Artwork(row_id=1, title="First", author="Author"),
+        Artwork(row_id=2, title="Second", author="Author"),
+    ]
+
+    pdf_bytes = generate_artworks_pdf(artworks)
+
+    assert pdf_bytes.startswith(b"%PDF")
+    assert len(pdf_bytes) > 1000

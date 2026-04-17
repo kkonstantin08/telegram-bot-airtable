@@ -33,3 +33,6 @@ class LookupResult:
 class ArtworkRepository:
     def find_by_row_id(self, row_id: int) -> LookupResult:
         raise NotImplementedError
+
+    def find_by_author_query(self, query: str) -> list[Artwork]:
+        raise NotImplementedError

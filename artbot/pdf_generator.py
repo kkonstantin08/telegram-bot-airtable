@@ -16,18 +16,32 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from artbot.domain import Artwork
 from artbot.messages import MISSING_VALUE
 
 logger = logging.getLogger(__name__)
 
-PDF_TITLE = "Карточка объекта"
+PDF_TITLE = "Artwork card"
 
 
 def generate_artwork_pdf(
     artwork: Artwork,
+    request_timeout_seconds: float = 4.0,
+    font_path: str | None = None,
+    bold_font_path: str | None = None,
+) -> bytes:
+    return generate_artworks_pdf(
+        [artwork],
+        request_timeout_seconds=request_timeout_seconds,
+        font_path=font_path,
+        bold_font_path=bold_font_path,
+    )
+
+
+def generate_artworks_pdf(
+    artworks: list[Artwork],
     request_timeout_seconds: float = 4.0,
     font_path: str | None = None,
     bold_font_path: str | None = None,
@@ -41,30 +55,57 @@ def generate_artwork_pdf(
         leftMargin=18 * mm,
         topMargin=16 * mm,
         bottomMargin=16 * mm,
-        title=f"{PDF_TITLE} #{artwork.row_id}",
+        title=PDF_TITLE,
         author="Airtable Telegram Bot",
     )
 
     styles = _styles(font_name, bold_font_name)
-    story = [
-        Paragraph(_pdf_text(PDF_TITLE), styles["Title"]),
-        Paragraph(f"ID записи: {artwork.row_id}", styles["SubTitle"]),
-        Spacer(1, 8 * mm),
-    ]
+    story: list[object] = []
+    for index, artwork in enumerate(artworks):
+        if index:
+            story.append(PageBreak())
+        story.extend(_artwork_story(artwork, request_timeout_seconds, styles))
+
+    document.build(story)
+    return buffer.getvalue()
+
+
+def _artwork_story(
+    artwork: Artwork,
+    request_timeout_seconds: float,
+    styles: dict[str, ParagraphStyle],
+) -> list[object]:
+    story: list[object] = []
 
     image_flowable = _build_image(artwork.image_url, request_timeout_seconds)
     if image_flowable:
         story.append(image_flowable)
     else:
-        story.append(Paragraph(_pdf_text("Изображение не указано или недоступно"), styles["ImagePlaceholder"]))
-    story.append(Spacer(1, 8 * mm))
+        story.append(Paragraph(" ", styles["ImagePlaceholder"]))
+    story.append(Spacer(1, 9 * mm))
 
-    story.append(Paragraph(_pdf_text(_value(artwork.title)), styles["ArtworkTitle"]))
-    story.append(Spacer(1, 5 * mm))
-    story.append(_details_table(artwork, font_name, bold_font_name))
+    for value, style_name in _artwork_text_lines(artwork):
+        story.append(Paragraph(_pdf_text(value), styles[style_name]))
+        story.append(Spacer(1, 3 * mm))
 
-    document.build(story)
-    return buffer.getvalue()
+    return story
+
+
+def _artwork_text_lines(artwork: Artwork) -> list[tuple[str, str]]:
+    lines: list[tuple[str, str]] = []
+    if artwork.title:
+        lines.append((artwork.title, "ArtworkTitle"))
+    if artwork.author:
+        lines.append((artwork.author, "ArtworkText"))
+    if artwork.technique:
+        lines.append((artwork.technique, "ArtworkText"))
+    if artwork.size:
+        lines.append((artwork.size, "ArtworkText"))
+    if artwork.year:
+        lines.append((artwork.year, "ArtworkText"))
+    if not lines:
+        lines.append((MISSING_VALUE, "ArtworkText"))
+    return lines
 
 
 def _build_image(image_url: str | None, request_timeout_seconds: float) -> Image | None:
@@ -90,14 +131,7 @@ def _build_image(image_url: str | None, request_timeout_seconds: float) -> Image
         return None
 
 
-def _details_table(artwork: Artwork, font_name: str, bold_font_name: str) -> Table:
-    label_style = ParagraphStyle(
-        "DetailLabel",
-        fontName=bold_font_name,
-        fontSize=10.5,
-        leading=14,
-        textColor=colors.HexColor("#3B3B3B"),
-    )
+def _details_table(artwork: Artwork, font_name: str, _bold_font_name: str) -> Table:
     value_style = ParagraphStyle(
         "DetailValue",
         fontName=font_name,
@@ -105,25 +139,17 @@ def _details_table(artwork: Artwork, font_name: str, bold_font_name: str) -> Tab
         leading=14,
         textColor=colors.HexColor("#111111"),
     )
-    data = [
-        [_paragraph("Автор", label_style), _paragraph(_value(artwork.author), value_style)],
-        [_paragraph("Техника", label_style), _paragraph(_value(artwork.technique), value_style)],
-        [_paragraph("Размер", label_style), _paragraph(_value(artwork.size), value_style)],
-        [_paragraph("Год", label_style), _paragraph(_value(artwork.year), value_style)],
-    ]
-    table = Table(data, colWidths=[36 * mm, 120 * mm], hAlign="LEFT")
+    data = [[_paragraph(value, value_style)] for value, _style_name in _artwork_text_lines(artwork)]
+    table = Table(data, colWidths=[156 * mm], hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
                 ("FONTNAME", (0, 0), (-1, -1), font_name),
-                ("FONTNAME", (0, 0), (0, -1), bold_font_name),
                 ("FONTSIZE", (0, 0), (-1, -1), 10.5),
-                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#3B3B3B")),
-                ("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#111111")),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#111111")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 8),
-                ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#D9D9D9")),
             ]
         )
     )
@@ -133,25 +159,6 @@ def _details_table(artwork: Artwork, font_name: str, bold_font_name: str) -> Tab
 def _styles(font_name: str, bold_font_name: str) -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
     return {
-        "Title": ParagraphStyle(
-            "Title",
-            parent=base["Title"],
-            fontName=bold_font_name,
-            fontSize=22,
-            leading=26,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor("#111111"),
-            spaceAfter=4,
-        ),
-        "SubTitle": ParagraphStyle(
-            "SubTitle",
-            parent=base["Normal"],
-            fontName=font_name,
-            fontSize=9,
-            leading=12,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor("#666666"),
-        ),
         "ImagePlaceholder": ParagraphStyle(
             "ImagePlaceholder",
             parent=base["Normal"],
@@ -162,7 +169,7 @@ def _styles(font_name: str, bold_font_name: str) -> dict[str, ParagraphStyle]:
             textColor=colors.HexColor("#777777"),
             borderColor=colors.HexColor("#D9D9D9"),
             borderWidth=0.5,
-            borderPadding=24,
+            borderPadding=45,
         ),
         "ArtworkTitle": ParagraphStyle(
             "ArtworkTitle",
@@ -173,11 +180,16 @@ def _styles(font_name: str, bold_font_name: str) -> dict[str, ParagraphStyle]:
             alignment=TA_LEFT,
             textColor=colors.HexColor("#111111"),
         ),
+        "ArtworkText": ParagraphStyle(
+            "ArtworkText",
+            parent=base["Normal"],
+            fontName=font_name,
+            fontSize=12,
+            leading=17,
+            alignment=TA_LEFT,
+            textColor=colors.HexColor("#111111"),
+        ),
     }
-
-
-def _value(value: str | None) -> str:
-    return value if value else MISSING_VALUE
 
 
 def _paragraph(value: str, style: ParagraphStyle) -> Paragraph:

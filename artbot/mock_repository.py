@@ -18,6 +18,15 @@ class MemoryArtworkRepository(ArtworkRepository):
             return LookupResult(status=LookupStatus.DUPLICATE, matched_count=len(matches))
         return LookupResult(status=LookupStatus.FOUND, artwork=matches[0], matched_count=1)
 
+    def find_by_author_query(self, query: str) -> list[Artwork]:
+        normalized_query = query.strip().lower()
+        matches = [
+            artwork
+            for artwork in self.artworks
+            if artwork.author and normalized_query in artwork.author.lower()
+        ]
+        return sorted(matches, key=lambda artwork: artwork.row_id)
+
 
 def load_artworks_from_fixture(path: str | Path) -> list[Artwork]:
     raw_items = json.loads(Path(path).read_text(encoding="utf-8"))
