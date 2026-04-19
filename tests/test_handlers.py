@@ -1,23 +1,27 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from artbot.domain import Artwork, ArtworkRepository, LookupResult, LookupStatus
-from artbot.handlers import process_user_text, send_help_message, send_start_message
+from artbot.handlers import InMemoryRequestGuard, process_user_text, send_help_message, send_start_message
 from artbot.messages import (
+    AIRTABLE_ERROR_TEXT,
     AUTHOR_NOT_FOUND_TEXT,
     AUTHOR_QUERY_TOO_SHORT_TEXT,
     DUPLICATE_TEXT,
     NOT_FOUND_TEXT,
+    REQUEST_BUSY_TEXT,
     ROW_QUERY_ACCEPTED_TEXT,
 )
 
 
 class FakeMessage:
-    def __init__(self, text: str | None = None) -> None:
+    def __init__(self, text: str | None = None, chat_id: int = 1) -> None:
         self.text = text
+        self.chat = SimpleNamespace(id=chat_id)
         self.events: list[dict[str, Any]] = []
 
     async def answer(self, text: str, **kwargs: Any) -> None:
@@ -48,6 +52,16 @@ class FakeRepository(ArtworkRepository):
     def find_by_author_query(self, query: str) -> list[Artwork]:
         self.author_queries.append(query)
         return self.author_results
+
+
+class RaisingRepository(FakeRepository):
+    def find_by_row_id(self, row_id: int) -> LookupResult:
+        self.row_queries.append(row_id)
+        raise RuntimeError("boom")
+
+    def find_by_author_query(self, query: str) -> list[Artwork]:
+        self.author_queries.append(query)
+        raise RuntimeError("boom")
 
 
 def fake_pdf_generator(*args: Any, **kwargs: Any) -> bytes:
@@ -192,3 +206,109 @@ async def test_duplicate_row_id_is_data_error() -> None:
         {"type": "text", "text": ROW_QUERY_ACCEPTED_TEXT},
         {"type": "text", "text": DUPLICATE_TEXT},
     ]
+
+
+@pytest.mark.asyncio
+async def test_busy_same_chat_rejects_row_query_without_repository_call() -> None:
+    guard = InMemoryRequestGuard()
+    assert guard.try_acquire(10)
+    repo = FakeRepository(LookupResult(status=LookupStatus.FOUND, artwork=Artwork(row_id=1), matched_count=1))
+    message = FakeMessage("1", chat_id=10)
+
+    await process_user_text(message, repo, pdf_generator=fake_pdf_generator, guard=guard)
+
+    assert repo.row_queries == []
+    assert repo.author_queries == []
+    assert message.events == [{"type": "text", "text": REQUEST_BUSY_TEXT}]
+
+
+@pytest.mark.asyncio
+async def test_busy_same_chat_rejects_author_query_without_repository_call() -> None:
+    guard = InMemoryRequestGuard()
+    assert guard.try_acquire(10)
+    repo = FakeRepository(author_results=[Artwork(row_id=1, author="Иванова")])
+    message = FakeMessage("Иванова", chat_id=10)
+
+    await process_user_text(message, repo, artworks_pdf_generator=fake_artworks_pdf_generator, guard=guard)
+
+    assert repo.row_queries == []
+    assert repo.author_queries == []
+    assert message.events == [{"type": "text", "text": REQUEST_BUSY_TEXT}]
+
+
+@pytest.mark.asyncio
+async def test_busy_different_chat_does_not_block_row_query() -> None:
+    guard = InMemoryRequestGuard()
+    assert guard.try_acquire(10)
+    artwork = Artwork(row_id=2, title="Other chat", image_url=None)
+    repo = FakeRepository(LookupResult(status=LookupStatus.FOUND, artwork=artwork, matched_count=1))
+    message = FakeMessage("2", chat_id=20)
+
+    await process_user_text(message, repo, pdf_generator=fake_pdf_generator, guard=guard)
+
+    assert repo.row_queries == [2]
+    assert message.events[0]["text"] == ROW_QUERY_ACCEPTED_TEXT
+    assert message.events[-1]["filename"] == "artwork_2.pdf"
+
+
+@pytest.mark.asyncio
+async def test_guard_releases_chat_after_success() -> None:
+    guard = InMemoryRequestGuard()
+    first_repo = FakeRepository(
+        LookupResult(status=LookupStatus.FOUND, artwork=Artwork(row_id=1, image_url=None), matched_count=1)
+    )
+    second_repo = FakeRepository(
+        LookupResult(status=LookupStatus.FOUND, artwork=Artwork(row_id=2, image_url=None), matched_count=1)
+    )
+
+    await process_user_text(FakeMessage("1", chat_id=30), first_repo, pdf_generator=fake_pdf_generator, guard=guard)
+    await process_user_text(FakeMessage("2", chat_id=30), second_repo, pdf_generator=fake_pdf_generator, guard=guard)
+
+    assert first_repo.row_queries == [1]
+    assert second_repo.row_queries == [2]
+
+
+@pytest.mark.asyncio
+async def test_guard_releases_chat_after_row_lookup_error() -> None:
+    guard = InMemoryRequestGuard()
+    failing_repo = RaisingRepository()
+    healthy_repo = FakeRepository(
+        LookupResult(status=LookupStatus.FOUND, artwork=Artwork(row_id=2, image_url=None), matched_count=1)
+    )
+    first_message = FakeMessage("1", chat_id=40)
+    second_message = FakeMessage("2", chat_id=40)
+
+    await process_user_text(first_message, failing_repo, pdf_generator=fake_pdf_generator, guard=guard)
+    await process_user_text(second_message, healthy_repo, pdf_generator=fake_pdf_generator, guard=guard)
+
+    assert first_message.events == [
+        {"type": "text", "text": ROW_QUERY_ACCEPTED_TEXT},
+        {"type": "text", "text": AIRTABLE_ERROR_TEXT},
+    ]
+    assert healthy_repo.row_queries == [2]
+
+
+@pytest.mark.asyncio
+async def test_guard_releases_chat_after_author_lookup_error() -> None:
+    guard = InMemoryRequestGuard()
+    failing_repo = RaisingRepository()
+    healthy_repo = FakeRepository(author_results=[Artwork(row_id=1, author="Иванова")])
+    first_message = FakeMessage("Иванова", chat_id=50)
+    second_message = FakeMessage("Иванова", chat_id=50)
+
+    await process_user_text(
+        first_message,
+        failing_repo,
+        artworks_pdf_generator=fake_artworks_pdf_generator,
+        guard=guard,
+    )
+    await process_user_text(
+        second_message,
+        healthy_repo,
+        artworks_pdf_generator=fake_artworks_pdf_generator,
+        guard=guard,
+    )
+
+    assert first_message.events == [{"type": "text", "text": AIRTABLE_ERROR_TEXT}]
+    assert healthy_repo.author_queries == ["Иванова"]
+    assert second_message.events[-1]["filename"] == "artworks_Иванова.pdf"

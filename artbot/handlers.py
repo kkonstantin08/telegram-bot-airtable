@@ -23,6 +23,7 @@ from artbot.messages import (
     NOT_A_NUMBER_TEXT,
     NOT_FOUND_TEXT,
     PDF_ERROR_TEXT,
+    REQUEST_BUSY_TEXT,
     ROW_QUERY_ACCEPTED_TEXT,
     START_TEXT,
     format_artwork_caption,
@@ -35,6 +36,23 @@ logger = logging.getLogger(__name__)
 PdfGenerator = Callable[..., bytes]
 
 router = Router()
+
+
+class InMemoryRequestGuard:
+    def __init__(self) -> None:
+        self._active_chat_ids: set[int] = set()
+
+    def try_acquire(self, chat_id: int) -> bool:
+        if chat_id in self._active_chat_ids:
+            return False
+        self._active_chat_ids.add(chat_id)
+        return True
+
+    def release(self, chat_id: int) -> None:
+        self._active_chat_ids.discard(chat_id)
+
+
+request_guard = InMemoryRequestGuard()
 
 
 @router.message(CommandStart())
@@ -80,6 +98,48 @@ async def process_user_text(
     pdf_bold_font_path: str | None = None,
     pdf_generator: PdfGenerator = generate_artwork_pdf,
     artworks_pdf_generator: PdfGenerator = generate_artworks_pdf,
+    guard: InMemoryRequestGuard | None = None,
+) -> None:
+    active_guard = guard or request_guard
+    chat_id = _extract_chat_id(message)
+    if chat_id is not None:
+        if not active_guard.try_acquire(chat_id):
+            await message.answer(REQUEST_BUSY_TEXT)
+            return
+
+        try:
+            await _process_user_text_unlocked(
+                message,
+                repository=repository,
+                request_timeout_seconds=request_timeout_seconds,
+                pdf_font_path=pdf_font_path,
+                pdf_bold_font_path=pdf_bold_font_path,
+                pdf_generator=pdf_generator,
+                artworks_pdf_generator=artworks_pdf_generator,
+            )
+        finally:
+            active_guard.release(chat_id)
+        return
+
+    await _process_user_text_unlocked(
+        message,
+        repository=repository,
+        request_timeout_seconds=request_timeout_seconds,
+        pdf_font_path=pdf_font_path,
+        pdf_bold_font_path=pdf_bold_font_path,
+        pdf_generator=pdf_generator,
+        artworks_pdf_generator=artworks_pdf_generator,
+    )
+
+
+async def _process_user_text_unlocked(
+    message: Any,
+    repository: ArtworkRepository,
+    request_timeout_seconds: float,
+    pdf_font_path: str | None,
+    pdf_bold_font_path: str | None,
+    pdf_generator: PdfGenerator,
+    artworks_pdf_generator: PdfGenerator,
 ) -> None:
     text = (message.text or "").strip()
     if not text:
@@ -239,6 +299,11 @@ async def _send_card(
 def _safe_filename_part(value: str) -> str:
     filename = re.sub(r"[^\w.-]+", "_", value.strip(), flags=re.UNICODE).strip("._")
     return filename[:80] or "author"
+
+
+def _extract_chat_id(message: Any) -> int | None:
+    chat_id = getattr(getattr(message, "chat", None), "id", None)
+    return chat_id if isinstance(chat_id, int) else None
 
 
 def _download_image_bytes(image_url: str, request_timeout_seconds: float) -> bytes:
