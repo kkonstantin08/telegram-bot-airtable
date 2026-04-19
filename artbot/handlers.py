@@ -6,6 +6,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+import requests
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandStart
@@ -144,7 +145,7 @@ async def _process_row_id_query(
 
     artwork = result.artwork
     caption = format_artwork_caption(artwork)
-    await _send_card(message, artwork.image_url, caption)
+    await _send_card(message, artwork.image_url, caption, request_timeout_seconds)
 
     try:
         pdf_bytes = await asyncio.to_thread(
@@ -206,18 +207,42 @@ async def _process_author_query(
         await message.answer(PDF_ERROR_TEXT)
 
 
-async def _send_card(message: Any, image_url: str | None, caption: str) -> None:
+async def _send_card(
+    message: Any,
+    image_url: str | None,
+    caption: str,
+    request_timeout_seconds: float,
+) -> None:
     if not image_url:
         await message.answer(caption + "\n\nИзображение не указано.")
         return
 
     try:
-        await message.answer_photo(photo=image_url, caption=caption)
+        image_bytes = await asyncio.to_thread(
+            _download_image_bytes,
+            image_url,
+            request_timeout_seconds,
+        )
+        photo = BufferedInputFile(image_bytes, filename="artwork_image.jpg")
+        await message.answer_photo(photo=photo, caption=caption)
     except TelegramAPIError:
-        logger.exception("Telegram could not send image URL")
+        logger.exception("Telegram could not send image")
+        await message.answer(caption + IMAGE_ERROR_SUFFIX)
+    except Exception:
+        logger.exception("Could not download image before sending it to Telegram")
         await message.answer(caption + IMAGE_ERROR_SUFFIX)
 
 
 def _safe_filename_part(value: str) -> str:
     filename = re.sub(r"[^\w.-]+", "_", value.strip(), flags=re.UNICODE).strip("._")
     return filename[:80] or "author"
+
+
+def _download_image_bytes(image_url: str, request_timeout_seconds: float) -> bytes:
+    response = requests.get(
+        image_url,
+        timeout=request_timeout_seconds,
+        headers={"User-Agent": "artbot/1.0"},
+    )
+    response.raise_for_status()
+    return response.content

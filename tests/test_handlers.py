@@ -71,7 +71,9 @@ async def test_start_and_help_messages() -> None:
 
 
 @pytest.mark.asyncio
-async def test_existing_row_sends_photo_caption_with_price_and_pdf() -> None:
+async def test_existing_row_sends_photo_caption_with_price_and_pdf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     artwork = Artwork(
         row_id=1,
         title="Title",
@@ -81,6 +83,7 @@ async def test_existing_row_sends_photo_caption_with_price_and_pdf() -> None:
     )
     repo = FakeRepository(LookupResult(status=LookupStatus.FOUND, artwork=artwork, matched_count=1))
     message = FakeMessage("1")
+    monkeypatch.setattr("artbot.handlers._download_image_bytes", lambda *_args: b"image")
 
     await process_user_text(message, repo, pdf_generator=fake_pdf_generator)
 
