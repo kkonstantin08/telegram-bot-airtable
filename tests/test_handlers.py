@@ -11,6 +11,7 @@ from artbot.messages import (
     AUTHOR_QUERY_TOO_SHORT_TEXT,
     DUPLICATE_TEXT,
     NOT_FOUND_TEXT,
+    ROW_QUERY_ACCEPTED_TEXT,
 )
 
 
@@ -89,9 +90,10 @@ async def test_existing_row_sends_photo_caption_with_price_and_pdf(
 
     assert repo.row_queries == [1]
     assert repo.author_queries == []
-    assert [event["type"] for event in message.events] == ["photo", "document"]
-    assert "Цена: 100" in message.events[0]["caption"]
-    assert message.events[1]["filename"] == "artwork_1.pdf"
+    assert [event["type"] for event in message.events] == ["text", "photo", "document"]
+    assert message.events[0]["text"] == ROW_QUERY_ACCEPTED_TEXT
+    assert "Цена: 100" in message.events[1]["caption"]
+    assert message.events[2]["filename"] == "artwork_1.pdf"
 
 
 @pytest.mark.asyncio
@@ -102,8 +104,9 @@ async def test_existing_row_without_image_sends_text_and_pdf() -> None:
 
     await process_user_text(message, repo, pdf_generator=fake_pdf_generator)
 
-    assert [event["type"] for event in message.events] == ["text", "document"]
-    assert "Изображение не указано" in message.events[0]["text"]
+    assert [event["type"] for event in message.events] == ["text", "text", "document"]
+    assert message.events[0]["text"] == ROW_QUERY_ACCEPTED_TEXT
+    assert "Изображение не указано" in message.events[1]["text"]
 
 
 @pytest.mark.asyncio
@@ -114,8 +117,9 @@ async def test_partial_data_does_not_break_response() -> None:
 
     await process_user_text(message, repo, pdf_generator=fake_pdf_generator)
 
-    assert "не указано" in message.events[0]["text"]
-    assert message.events[1]["filename"] == "artwork_3.pdf"
+    assert message.events[0]["text"] == ROW_QUERY_ACCEPTED_TEXT
+    assert "не указано" in message.events[1]["text"]
+    assert message.events[2]["filename"] == "artwork_3.pdf"
 
 
 @pytest.mark.asyncio
@@ -125,7 +129,10 @@ async def test_not_found_message() -> None:
 
     await process_user_text(message, repo, pdf_generator=fake_pdf_generator)
 
-    assert message.events == [{"type": "text", "text": NOT_FOUND_TEXT}]
+    assert message.events == [
+        {"type": "text", "text": ROW_QUERY_ACCEPTED_TEXT},
+        {"type": "text", "text": NOT_FOUND_TEXT},
+    ]
 
 
 @pytest.mark.asyncio
@@ -181,4 +188,7 @@ async def test_duplicate_row_id_is_data_error() -> None:
 
     await process_user_text(message, repo, pdf_generator=fake_pdf_generator)
 
-    assert message.events == [{"type": "text", "text": DUPLICATE_TEXT}]
+    assert message.events == [
+        {"type": "text", "text": ROW_QUERY_ACCEPTED_TEXT},
+        {"type": "text", "text": DUPLICATE_TEXT},
+    ]

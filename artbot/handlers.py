@@ -23,6 +23,7 @@ from artbot.messages import (
     NOT_A_NUMBER_TEXT,
     NOT_FOUND_TEXT,
     PDF_ERROR_TEXT,
+    ROW_QUERY_ACCEPTED_TEXT,
     START_TEXT,
     format_artwork_caption,
     format_author_found_text,
@@ -122,6 +123,8 @@ async def _process_row_id_query(
     pdf_bold_font_path: str | None,
     pdf_generator: PdfGenerator,
 ) -> None:
+    await message.answer(ROW_QUERY_ACCEPTED_TEXT)
+
     try:
         result = await asyncio.to_thread(repository.find_by_row_id, row_id)
     except Exception:
