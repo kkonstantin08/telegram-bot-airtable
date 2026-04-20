@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
 
 from artbot.airtable_repository import AirtableArtworkRepository
 from artbot.config import Settings
@@ -25,7 +26,8 @@ async def main() -> None:
         request_timeout_seconds=settings.request_timeout_seconds,
     )
 
-    bot = Bot(token=settings.bot_token)
+    session = AiohttpSession(timeout=settings.telegram_request_timeout_seconds)
+    bot = Bot(token=settings.bot_token, session=session)
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
 
@@ -34,6 +36,7 @@ async def main() -> None:
         bot,
         repository=repository,
         request_timeout_seconds=settings.request_timeout_seconds,
+        author_pdf_chunk_size=settings.author_pdf_chunk_size,
         pdf_font_path=settings.pdf_font_path,
         pdf_bold_font_path=settings.pdf_bold_font_path,
     )

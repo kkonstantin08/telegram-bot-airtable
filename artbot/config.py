@@ -27,6 +27,8 @@ class Settings:
     fields: AirtableFieldMapping
     log_level: str = "INFO"
     request_timeout_seconds: float = 4.0
+    telegram_request_timeout_seconds: float = 300.0
+    author_pdf_chunk_size: int = 50
     pdf_font_path: str | None = None
     pdf_bold_font_path: str | None = None
 
@@ -51,6 +53,10 @@ class Settings:
             ),
             log_level=_env("LOG_LEVEL", "INFO").upper(),
             request_timeout_seconds=float(_env("REQUEST_TIMEOUT_SECONDS", "4")),
+            telegram_request_timeout_seconds=float(
+                _env("TELEGRAM_REQUEST_TIMEOUT_SECONDS", "300")
+            ),
+            author_pdf_chunk_size=max(1, int(_env("AUTHOR_PDF_CHUNK_SIZE", "50"))),
             pdf_font_path=_optional_env("PDF_FONT_PATH"),
             pdf_bold_font_path=_optional_env("PDF_BOLD_FONT_PATH"),
         )

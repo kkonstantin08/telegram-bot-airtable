@@ -12,7 +12,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandStart
 from aiogram.types import BufferedInputFile, Message
 
-from artbot.domain import ArtworkRepository, LookupStatus
+from artbot.domain import Artwork, ArtworkRepository, LookupStatus
 from artbot.messages import (
     AIRTABLE_ERROR_TEXT,
     AUTHOR_NOT_FOUND_TEXT,
@@ -70,6 +70,7 @@ async def text_handler(
     message: Message,
     repository: ArtworkRepository,
     request_timeout_seconds: float,
+    author_pdf_chunk_size: int = 50,
     pdf_font_path: str | None = None,
     pdf_bold_font_path: str | None = None,
 ) -> None:
@@ -77,6 +78,7 @@ async def text_handler(
         message,
         repository=repository,
         request_timeout_seconds=request_timeout_seconds,
+        author_pdf_chunk_size=author_pdf_chunk_size,
         pdf_font_path=pdf_font_path,
         pdf_bold_font_path=pdf_bold_font_path,
     )
@@ -94,6 +96,7 @@ async def process_user_text(
     message: Any,
     repository: ArtworkRepository,
     request_timeout_seconds: float = 4.0,
+    author_pdf_chunk_size: int = 50,
     pdf_font_path: str | None = None,
     pdf_bold_font_path: str | None = None,
     pdf_generator: PdfGenerator = generate_artwork_pdf,
@@ -112,6 +115,7 @@ async def process_user_text(
                 message,
                 repository=repository,
                 request_timeout_seconds=request_timeout_seconds,
+                author_pdf_chunk_size=author_pdf_chunk_size,
                 pdf_font_path=pdf_font_path,
                 pdf_bold_font_path=pdf_bold_font_path,
                 pdf_generator=pdf_generator,
@@ -125,6 +129,7 @@ async def process_user_text(
         message,
         repository=repository,
         request_timeout_seconds=request_timeout_seconds,
+        author_pdf_chunk_size=author_pdf_chunk_size,
         pdf_font_path=pdf_font_path,
         pdf_bold_font_path=pdf_bold_font_path,
         pdf_generator=pdf_generator,
@@ -136,6 +141,7 @@ async def _process_user_text_unlocked(
     message: Any,
     repository: ArtworkRepository,
     request_timeout_seconds: float,
+    author_pdf_chunk_size: int,
     pdf_font_path: str | None,
     pdf_bold_font_path: str | None,
     pdf_generator: PdfGenerator,
@@ -152,6 +158,7 @@ async def _process_user_text_unlocked(
             repository=repository,
             query=text,
             request_timeout_seconds=request_timeout_seconds,
+            author_pdf_chunk_size=author_pdf_chunk_size,
             pdf_font_path=pdf_font_path,
             pdf_bold_font_path=pdf_bold_font_path,
             artworks_pdf_generator=artworks_pdf_generator,
@@ -230,6 +237,7 @@ async def _process_author_query(
     repository: ArtworkRepository,
     query: str,
     request_timeout_seconds: float,
+    author_pdf_chunk_size: int,
     pdf_font_path: str | None,
     pdf_bold_font_path: str | None,
     artworks_pdf_generator: PdfGenerator,
@@ -253,18 +261,26 @@ async def _process_author_query(
     await message.answer(format_author_found_text(len(artworks)))
 
     try:
-        pdf_bytes = await asyncio.to_thread(
-            artworks_pdf_generator,
-            artworks,
-            request_timeout_seconds,
-            pdf_font_path,
-            pdf_bold_font_path,
-        )
-        document = BufferedInputFile(
-            pdf_bytes,
-            filename=f"artworks_{_safe_filename_part(normalized_query)}.pdf",
-        )
-        await message.answer_document(document=document, caption=f"PDF по автору: {normalized_query}")
+        chunks = _chunked(artworks, max(1, author_pdf_chunk_size))
+        total_chunks = len(chunks)
+        for chunk_index, artwork_chunk in enumerate(chunks, start=1):
+            pdf_bytes = await asyncio.to_thread(
+                artworks_pdf_generator,
+                artwork_chunk,
+                request_timeout_seconds,
+                pdf_font_path,
+                pdf_bold_font_path,
+            )
+            filename_suffix = f"_{chunk_index}_of_{total_chunks}" if total_chunks > 1 else ""
+            caption_suffix = f", часть {chunk_index}/{total_chunks}" if total_chunks > 1 else ""
+            document = BufferedInputFile(
+                pdf_bytes,
+                filename=f"artworks_{_safe_filename_part(normalized_query)}{filename_suffix}.pdf",
+            )
+            await message.answer_document(
+                document=document,
+                caption=f"PDF по автору: {normalized_query}{caption_suffix}",
+            )
     except Exception:
         logger.exception("Author PDF generation or sending failed for query=%s", normalized_query)
         await message.answer(PDF_ERROR_TEXT)
@@ -299,6 +315,10 @@ async def _send_card(
 def _safe_filename_part(value: str) -> str:
     filename = re.sub(r"[^\w.-]+", "_", value.strip(), flags=re.UNICODE).strip("._")
     return filename[:80] or "author"
+
+
+def _chunked(items: list[Artwork], chunk_size: int) -> list[list[Artwork]]:
+    return [items[index : index + chunk_size] for index in range(0, len(items), chunk_size)]
 
 
 def _extract_chat_id(message: Any) -> int | None:

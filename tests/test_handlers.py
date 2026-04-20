@@ -173,6 +173,35 @@ async def test_text_query_searches_by_author_and_sends_one_pdf() -> None:
 
 
 @pytest.mark.asyncio
+async def test_text_query_splits_large_author_pdf_into_chunks() -> None:
+    artworks = [Artwork(row_id=row_id, title=f"Artwork {row_id}", author="Author") for row_id in range(1, 6)]
+    generated_chunks: list[list[int]] = []
+
+    def chunked_pdf_generator(chunk: list[Artwork], *_args: Any, **_kwargs: Any) -> bytes:
+        generated_chunks.append([artwork.row_id for artwork in chunk])
+        return b"%PDF-1.4\nmulti\n"
+
+    repo = FakeRepository(author_results=artworks)
+    message = FakeMessage("Author")
+
+    await process_user_text(
+        message,
+        repo,
+        artworks_pdf_generator=chunked_pdf_generator,
+        author_pdf_chunk_size=2,
+    )
+
+    assert generated_chunks == [[1, 2], [3, 4], [5]]
+    assert [event["type"] for event in message.events] == ["text", "document", "document", "document"]
+    assert message.events[1]["filename"] == "artworks_Author_1_of_3.pdf"
+    assert message.events[2]["filename"] == "artworks_Author_2_of_3.pdf"
+    assert message.events[3]["filename"] == "artworks_Author_3_of_3.pdf"
+    assert "1/3" in message.events[1]["caption"]
+    assert "2/3" in message.events[2]["caption"]
+    assert "3/3" in message.events[3]["caption"]
+
+
+@pytest.mark.asyncio
 async def test_short_text_query_returns_hint() -> None:
     repo = FakeRepository()
     message = FakeMessage("a")
