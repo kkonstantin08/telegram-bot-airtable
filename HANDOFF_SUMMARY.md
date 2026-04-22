@@ -24,7 +24,7 @@
 - `docker-compose.yml`
 - `requirements-prod.txt`
 - `README.md`
-- `MANUAL_GUIDE.md`
+- `README.md`
 - `HANDOFF_SUMMARY.md`
 - `requirements.txt`
 - `pytest.ini`

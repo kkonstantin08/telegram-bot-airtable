@@ -1,63 +1,93 @@
 # Telegram Bot Airtable Art Cards
 
-Telegram-бот для коллекции современного искусства. Пользователь отправляет номер строки / стабильный числовой ID записи или фамилию автора. Бот получает данные из Airtable, отправляет карточку объекта в Telegram и формирует PDF A4.
+Telegram-бот для выдачи карточек произведений искусства из Airtable.
 
-## Что делает проект
+Пользователь отправляет боту номер записи или фамилию автора. Бот получает данные из Airtable, отправляет карточку в Telegram и формирует PDF A4.
 
-- Команда `/start` кратко объясняет сценарий.
-- Команда `/help` показывает инструкцию.
-- Сценарий по номеру: пользователь отправляет число, например `12`.
-- Бот ищет запись в Airtable строго по числовому полю, заданному в `AIRTABLE_ROW_ID_FIELD`.
-- Если запись найдена по номеру, бот отправляет изображение с подписью или текстовую карточку без изображения, затем PDF-карточку A4.
-- Сценарий по автору: пользователь отправляет фамилию или часть имени автора, бот отправляет один общий PDF по всем найденным работам.
-- Цена остается в Telegram-сообщении, но не выводится в PDF.
-- Если записей с одним row ID несколько, бот не выбирает одну автоматически и сообщает об ошибке данных.
+## Возможности
 
-В проекте намеренно нет поиска по названию, fuzzy search, inline keyboard и списка вариантов.
+- Поиск одной работы по стабильному числовому ID из Airtable.
+- Поиск работ по фамилии или части имени автора.
+- Отправка карточки в Telegram: главное фото, основные поля и цена.
+- Генерация PDF без цены: фото работы, описание, провенанс, экспертиза и обрамление.
+- Поддержка нескольких фото в полях `Image`, `Экспертиза`, `Обрамление`.
+- Обработка пустых полей: бот не падает, а пропускает отсутствующие данные или пишет `не указано`.
+- Разбиение больших PDF по автору на несколько файлов.
 
-## Стек
-
-- Python 3.12
-- aiogram 3 для Telegram Bot API
-- pyairtable для Airtable API
-- reportlab для устойчивой прямой генерации PDF
-- pytest для локальных проверок
-- Docker / Docker Compose для серверного запуска
-
-Выбор сделан в пользу простого локального запуска, малого количества сервисов и прямолинейной поддержки.
-
-## Структура
+## Как устроен проект
 
 ```text
 artbot/
-  airtable_repository.py  # доступ к Airtable и строгий lookup по row ID
-  config.py               # .env и маппинг полей Airtable
-  domain.py               # модели Artwork и LookupResult
-  handlers.py             # Telegram handlers и пользовательская логика
-  main.py                 # entrypoint бота
-  messages.py             # тексты ответов
-  mock_repository.py      # локальный mock для e2e без токенов
-  pdf_generator.py        # PDF A4
+  main.py                  # точка входа бота
+  config.py                # чтение .env и настройка полей Airtable
+  domain.py                # модели данных
+  airtable_repository.py   # запросы к Airtable
+  handlers.py              # обработчики Telegram-сообщений
+  messages.py              # тексты ответов бота
+  pdf_generator.py         # генерация PDF
+  mock_repository.py       # тестовый репозиторий для локальной проверки
 fixtures/
-  sample_records.json     # mock-данные для локального e2e
+  sample_records.json      # тестовые данные
 scripts/
-  check.ps1               # compile + tests + local e2e
-  local_e2e.py            # локальная проверка ключевых сценариев
+  check.ps1                # локальная проверка проекта
+  local_e2e.py             # e2e-проверка без Telegram и Airtable
 tests/
-  test_*.py
+  test_*.py                # автотесты
+Dockerfile                 # сборка Docker-образа
+docker-compose.yml         # запуск контейнера
+.env.example               # пример переменных окружения
 ```
 
-## Установка
+## Требования
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python -m pip install --upgrade pip
-.\.venv\Scripts\python -m pip install -r requirements.txt
-```
+Для локального запуска:
+
+- Python 3.12
+- pip
+
+Для серверного запуска:
+
+- Docker
+- Docker Compose plugin
+- исходящий доступ к Airtable API и Telegram Bot API
+
+## Поля Airtable
+
+В таблице Airtable должны быть такие поля:
+
+| Поле | Тип | Назначение |
+| --- | --- | --- |
+| `Row Number` | Autonumber | стабильный ID для поиска |
+| `Title` | Single line text | название |
+| `Author` | Single line text | автор |
+| `Technique` | Single line text | техника |
+| `Size` | Single line text | размер |
+| `Year` | Number или text | год |
+| `Price` | Currency или text | цена, выводится только в Telegram |
+| `Image` | Attachment | одно или несколько фото работы |
+| `Экспертиза` | Attachment | одно или несколько фото документов |
+| `Обрамление` | Attachment | одно или несколько фото обрамления |
+| `Провенанс/публикации/литература` | Long text | текстовый раздел PDF |
+
+`Row Number` лучше делать именно типом `Autonumber`. Визуальный номер строки в Airtable может меняться при сортировке и фильтрах, а `Autonumber` остается стабильным.
+
+Если названия полей в Airtable отличаются, их можно указать в `.env` через переменные `AIRTABLE_*_FIELD`.
+
+## Порядок фото
+
+Бот получает фото из Airtable через API. В Telegram отправляется первое фото из поля `Image`, а в PDF попадают все фото из `Image`.
+
+Если визуальный порядок в Airtable отличается от порядка, который Airtable отдает через API, бот не сможет надежно определить порядок сам. Для строгого порядка можно доработать сортировку по имени файла, например `01_main.jpg`, `02_detail.jpg`, `03_back.jpg`.
 
 ## Настройка `.env`
 
 Скопируйте пример:
+
+```bash
+cp .env.example .env
+```
+
+На Windows:
 
 ```powershell
 Copy-Item .env.example .env
@@ -67,11 +97,12 @@ Copy-Item .env.example .env
 
 ```env
 BOT_TOKEN=1234567890:real_telegram_token
+
 AIRTABLE_API_KEY=pat_real_airtable_token
 AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX
 AIRTABLE_TABLE_NAME=Objects
-AIRTABLE_ROW_ID_FIELD=Row Number
 
+AIRTABLE_ROW_ID_FIELD=Row Number
 AIRTABLE_TITLE_FIELD=Title
 AIRTABLE_AUTHOR_FIELD=Author
 AIRTABLE_TECHNIQUE_FIELD=Technique
@@ -82,83 +113,64 @@ AIRTABLE_IMAGE_FIELD=Image
 AIRTABLE_EXPERTISE_FIELD=Экспертиза
 AIRTABLE_FRAMING_FIELD=Обрамление
 AIRTABLE_PROVENANCE_FIELD=Провенанс/публикации/литература
+
+LOG_LEVEL=INFO
+REQUEST_TIMEOUT_SECONDS=4
+TELEGRAM_REQUEST_TIMEOUT_SECONDS=300
+AUTHOR_PDF_CHUNK_SIZE=50
+
+PDF_FONT_PATH=
+PDF_BOLD_FONT_PATH=
 ```
 
-`AIRTABLE_ROW_ID_FIELD` должен указывать на стабильное числовое поле Airtable. Рекомендуемый тип поля: `Autonumber`. Не используйте визуальный номер строки в интерфейсе Airtable.
+### Где взять значения
 
-## Поля Airtable
+- `BOT_TOKEN` создается в Telegram через `@BotFather`.
+- `AIRTABLE_API_KEY` это Airtable Personal Access Token со scope `data.records:read`.
+- `AIRTABLE_BASE_ID` можно взять из URL Airtable или из Airtable API docs. Обычно выглядит как `appXXXXXXXXXXXXXX`.
+- `AIRTABLE_TABLE_NAME` это точное название вкладки таблицы в Airtable.
 
-Минимальная таблица:
+Реальный `.env` нельзя коммитить и отправлять в публичный репозиторий.
 
-| Поле | Тип Airtable | Назначение |
-| --- | --- | --- |
-| `Row Number` | Autonumber | стабильный numeric ID для поиска |
-| `Title` | Single line text | название |
-| `Author` | Single line text | автор |
-| `Technique` | Single line text | техника |
-| `Size` | Single line text | размер |
-| `Year` | Number или Single line text | год |
-| `Price` | Currency или Single line text | цена |
-| `Image` | Attachment или URL text | одно или несколько изображений работы |
-| `Экспертиза` | Attachment | одно или несколько фото документов |
-| `Обрамление` | Attachment | одно или несколько фото обрамления, необязательное поле |
-| `Провенанс/публикации/литература` | Long text | текст для PDF без подписи поля |
+## Локальный запуск
 
-Названия можно менять, но тогда нужно поменять соответствующие переменные `AIRTABLE_*_FIELD` в `.env`.
+Создайте виртуальное окружение и установите зависимости:
 
-## Запуск бота
+```bash
+python -m venv .venv
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+На Windows:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install --upgrade pip
+.\.venv\Scripts\python -m pip install -r requirements.txt
+```
+
+Запустите бота:
+
+```bash
+python -m artbot.main
+```
+
+На Windows:
 
 ```powershell
 .\.venv\Scripts\python -m artbot.main
 ```
 
-После запуска откройте Telegram, найдите своего бота и отправьте:
+После запуска откройте Telegram и отправьте боту:
 
 ```text
 /start
 /help
 1
-999
-abc
 ```
 
-## Запуск через Docker
-
-Docker-вариант подходит для спокойного деплоя на сервере. Бот работает через polling, поэтому открывать порты не нужно.
-
-1. Заполните `.env` реальными значениями.
-2. Соберите image:
-
-```powershell
-docker compose build
-```
-
-3. Запустите бота:
-
-```powershell
-docker compose up -d
-```
-
-4. Посмотрите логи:
-
-```powershell
-docker compose logs -f artbot
-```
-
-5. Остановите бота:
-
-```powershell
-docker compose down
-```
-
-Для обновления кода на сервере:
-
-```powershell
-docker compose build --no-cache
-docker compose up -d
-```
-
-## Локальные проверки без токенов
+## Проверка проекта
 
 Полная локальная проверка:
 
@@ -166,58 +178,316 @@ docker compose up -d
 .\scripts\check.ps1
 ```
 
-То же вручную:
+Ручной вариант:
 
-```powershell
-.\.venv\Scripts\python -m compileall artbot scripts tests
-.\.venv\Scripts\python -m pytest -q
-.\.venv\Scripts\python scripts\local_e2e.py
+```bash
+python -m compileall artbot scripts tests
+python -m pytest -q
+python scripts/local_e2e.py
 ```
 
-`scripts/local_e2e.py` использует `fixtures/sample_records.json`, не обращается к реальному Airtable и проверяет:
+Проверка не требует реальных Telegram/Airtable-токенов, потому что использует тестовые данные из `fixtures/sample_records.json`.
 
-- `/start`
-- `/help`
-- существующий row ID
-- поиск по фамилии автора
-- общий PDF по нескольким работам автора
-- генерацию PDF
-- отсутствие изображения
-- неполные данные
-- несуществующий row ID
-- короткий текстовый ввод
-- дублирующийся row ID
+## Деплой на сервер через Docker
 
-После запуска будет создан пример PDF в `output/sample_artwork_2.pdf`.
+Бот работает через polling. Публичный webhook URL и открытые входящие порты не нужны. Серверу нужен только исходящий интернет-доступ к Airtable и Telegram.
 
-## Assumptions
+### Важно про Telegram в России
 
-- Основной идентификатор записи хранится в отдельном стабильном числовом поле Airtable.
-- Рекомендуемое имя этого поля: `Row Number`.
-- Рекомендуемый тип этого поля: `Autonumber`.
-- Поле `Image` может быть Airtable Attachment с одним или несколькими файлами или текстовой URL-ссылкой.
-- В Telegram отправляется первое изображение из `Image`; в PDF выводятся все изображения из `Image`.
-- Поля `Экспертиза` и `Обрамление` могут содержать несколько attachment-фото и выводятся в PDF отдельными разделами.
-- Поле `Провенанс/публикации/литература` выводится в PDF как обычный текст без подписи.
-- Если изображение отсутствует или не загружается, бот все равно отправляет текст и PDF.
-- Если отдельные поля пустые, бот подставляет `не указано`.
-- Live e2e с Telegram и Airtable требует реальных `BOT_TOKEN`, Airtable PAT и заполненной базы.
+На российских серверах Telegram API может работать нестабильно или быть недоступен из-за сетевых ограничений. Если бот не подключается к Telegram, может понадобиться:
 
-## Ограничения
+- сервер вне РФ;
+- VPN или прокси на уровне сервера;
+- отдельная доработка кода под явный Telegram-прокси.
 
-- Бот работает через polling, без webhook.
-- Нет админки, базы данных, очередей и фоновых задач.
-- Поиск работает только по одному положительному числовому ID.
-- Если Airtable возвращает две записи с одним row ID, бот считает это ошибкой данных.
+Проверить доступность Telegram API на сервере можно так:
 
-## Финальные ручные действия
+```bash
+curl https://api.telegram.org
+```
 
-Подробно они расписаны в `MANUAL_GUIDE.md`. Коротко:
+### Подготовка сервера
 
-1. Создать Telegram-бота через BotFather.
-2. Создать Airtable base и таблицу с нужными полями.
-3. Создать Airtable PAT с доступом на чтение этой базы.
-4. Заполнить `.env`.
-5. Запустить `.\scripts\check.ps1`.
-6. Запустить `.\.venv\Scripts\python -m artbot.main`.
-7. Проверить сценарии в Telegram.
+Установите Docker и Docker Compose plugin.
+
+Проверка:
+
+```bash
+docker --version
+docker compose version
+```
+
+## Вариант 1. Деплой из архива
+
+Этот способ подходит, если проект передается заказчику архивом.
+
+### 1. Подготовить архив
+
+В архив нужно добавить код проекта, но не добавлять:
+
+```text
+.env
+.venv/
+venv/
+output/
+.pytest_cache/
+__pycache__/
+.git/
+```
+
+Если архив создается вручную, проверьте, что внутри есть:
+
+```text
+artbot/
+Dockerfile
+docker-compose.yml
+requirements-prod.txt
+.env.example
+README.md
+```
+
+### 2. Загрузить архив на сервер
+
+Пример через `scp`:
+
+```bash
+scp project.zip user@SERVER_IP:/home/user/
+```
+
+### 3. Распаковать
+
+```bash
+ssh user@SERVER_IP
+cd /home/user
+unzip project.zip -d telegram-bot-airtable
+cd telegram-bot-airtable
+```
+
+Если архив уже содержит папку проекта, перейдите в нее после распаковки.
+
+### 4. Создать `.env`
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Заполните реальные токены и настройки Airtable.
+
+### 5. Собрать и запустить
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+### 6. Посмотреть логи
+
+```bash
+docker compose logs -f artbot
+```
+
+## Вариант 2. Деплой через Git, публичный репозиторий
+
+Если репозиторий публичный:
+
+```bash
+ssh user@SERVER_IP
+cd /home/user
+git clone https://github.com/OWNER/REPOSITORY.git telegram-bot-airtable
+cd telegram-bot-airtable
+cp .env.example .env
+nano .env
+docker compose build
+docker compose up -d
+```
+
+Проверка логов:
+
+```bash
+docker compose logs -f artbot
+```
+
+## Вариант 3. Деплой через Git, приватный репозиторий
+
+Для приватного репозитория есть два нормальных способа: SSH-ключ или GitHub token.
+
+### Способ A. SSH-ключ и Deploy key
+
+На сервере:
+
+```bash
+ssh user@SERVER_IP
+ssh-keygen -t ed25519 -C "telegram-bot-airtable-server"
+cat ~/.ssh/id_ed25519.pub
+```
+
+Скопируйте public key и добавьте его в GitHub:
+
+```text
+Repository -> Settings -> Deploy keys -> Add deploy key
+```
+
+Если серверу нужно только скачивать код, галочку `Allow write access` не включайте.
+
+После этого клонируйте репозиторий:
+
+```bash
+cd /home/user
+git clone git@github.com:OWNER/REPOSITORY.git telegram-bot-airtable
+cd telegram-bot-airtable
+cp .env.example .env
+nano .env
+docker compose build
+docker compose up -d
+```
+
+### Способ B. HTTPS и Personal Access Token
+
+Создайте GitHub Personal Access Token с доступом к приватному репозиторию.
+
+Клонирование:
+
+```bash
+cd /home/user
+git clone https://USERNAME:TOKEN@github.com/OWNER/REPOSITORY.git telegram-bot-airtable
+cd telegram-bot-airtable
+```
+
+После клонирования лучше заменить remote URL, чтобы токен не лежал в `.git/config`:
+
+```bash
+git remote set-url origin https://github.com/OWNER/REPOSITORY.git
+```
+
+Дальше обычный запуск:
+
+```bash
+cp .env.example .env
+nano .env
+docker compose build
+docker compose up -d
+```
+
+## Обновление проекта на сервере
+
+### Если проект развернут из архива
+
+1. Остановите контейнер:
+
+```bash
+docker compose down
+```
+
+2. Замените файлы проекта новой версией.
+3. Не удаляйте рабочий `.env`.
+4. Пересоберите и запустите:
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Если проект развернут через Git
+
+```bash
+git pull
+docker compose build --no-cache
+docker compose up -d
+```
+
+Если менялись только настройки `.env`, пересборка не нужна:
+
+```bash
+docker compose restart artbot
+```
+
+## Управление контейнером
+
+Посмотреть статус:
+
+```bash
+docker compose ps
+```
+
+Посмотреть логи:
+
+```bash
+docker compose logs -f artbot
+```
+
+Перезапустить:
+
+```bash
+docker compose restart artbot
+```
+
+Остановить:
+
+```bash
+docker compose down
+```
+
+## Частые проблемы
+
+### Бот не запускается
+
+Проверьте `.env`. Эти переменные должны быть заполнены:
+
+```env
+BOT_TOKEN=
+AIRTABLE_API_KEY=
+AIRTABLE_BASE_ID=
+AIRTABLE_TABLE_NAME=
+```
+
+### Бот не отвечает в Telegram
+
+Проверьте:
+
+- контейнер запущен: `docker compose ps`;
+- в логах нет ошибок: `docker compose logs -f artbot`;
+- токен Telegram правильный;
+- сервер имеет доступ к `https://api.telegram.org`;
+- если сервер в РФ, возможно нужен прокси или VPN.
+
+### Запись не найдена
+
+Проверьте:
+
+- `AIRTABLE_BASE_ID`;
+- `AIRTABLE_TABLE_NAME`;
+- `AIRTABLE_ROW_ID_FIELD`;
+- что пользователь отправляет значение из `Row Number`, а не визуальный номер строки слева.
+
+### Airtable возвращает ошибку доступа
+
+Проверьте Personal Access Token:
+
+- есть scope `data.records:read`;
+- токен имеет доступ к нужной base;
+- `AIRTABLE_API_KEY` начинается с `pat`.
+
+### PDF не показывает кириллицу
+
+В Docker уже установлен `fonts-dejavu-core`. Если проблема возникла при локальном запуске, укажите шрифт вручную:
+
+```env
+PDF_FONT_PATH=C:\Windows\Fonts\arial.ttf
+PDF_BOLD_FONT_PATH=C:\Windows\Fonts\arialbd.ttf
+```
+
+### Ответы стали медленнее
+
+Чем больше фото в записи, тем дольше бот формирует PDF. Каждое изображение нужно скачать, обработать и вставить в документ.
+
+## Финальная проверка перед сдачей
+
+- [ ] `.env` заполнен реальными значениями.
+- [ ] `Row Number` в Airtable является стабильным числовым полем.
+- [ ] `/start` и `/help` отвечают.
+- [ ] Поиск по номеру возвращает карточку и PDF.
+- [ ] Поиск по автору возвращает общий PDF.
+- [ ] Запись без фото не ломает бота.
+- [ ] PDF открывается и содержит нужные разделы.
+- [ ] На сервере контейнер запущен и логи без критических ошибок.

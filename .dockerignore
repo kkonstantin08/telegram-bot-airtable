@@ -15,7 +15,6 @@ output/
 *.log
 .git/
 .gitignore
-MANUAL_GUIDE.md
 HANDOFF_SUMMARY.md
 README.md
 fixtures/
