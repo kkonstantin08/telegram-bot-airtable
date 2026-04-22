@@ -111,6 +111,60 @@ async def test_existing_row_sends_photo_caption_with_price_and_pdf(
 
 
 @pytest.mark.asyncio
+async def test_existing_row_uses_first_image_url_for_telegram_preview(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    downloaded_urls: list[str] = []
+
+    def fake_download(image_url: str, *_args: Any) -> bytes:
+        downloaded_urls.append(image_url)
+        return b"image"
+
+    artwork = Artwork(
+        row_id=10,
+        title="Title",
+        image_url="https://example.com/legacy.jpg",
+        image_urls=(
+            "https://example.com/first.jpg",
+            "https://example.com/second.jpg",
+        ),
+    )
+    repo = FakeRepository(LookupResult(status=LookupStatus.FOUND, artwork=artwork, matched_count=1))
+    message = FakeMessage("10")
+    monkeypatch.setattr("artbot.handlers._download_image_bytes", fake_download)
+
+    await process_user_text(message, repo, pdf_generator=fake_pdf_generator)
+
+    assert downloaded_urls == ["https://example.com/first.jpg"]
+    assert [event["type"] for event in message.events] == ["text", "photo", "document"]
+
+
+@pytest.mark.asyncio
+async def test_existing_row_preview_falls_back_to_legacy_image_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    downloaded_urls: list[str] = []
+
+    def fake_download(image_url: str, *_args: Any) -> bytes:
+        downloaded_urls.append(image_url)
+        return b"image"
+
+    artwork = Artwork(
+        row_id=11,
+        title="Title",
+        image_url="https://example.com/legacy.jpg",
+    )
+    repo = FakeRepository(LookupResult(status=LookupStatus.FOUND, artwork=artwork, matched_count=1))
+    message = FakeMessage("11")
+    monkeypatch.setattr("artbot.handlers._download_image_bytes", fake_download)
+
+    await process_user_text(message, repo, pdf_generator=fake_pdf_generator)
+
+    assert downloaded_urls == ["https://example.com/legacy.jpg"]
+    assert [event["type"] for event in message.events] == ["text", "photo", "document"]
+
+
+@pytest.mark.asyncio
 async def test_existing_row_without_image_sends_text_and_pdf() -> None:
     artwork = Artwork(row_id=2, title="Title", author="Author", image_url=None)
     repo = FakeRepository(LookupResult(status=LookupStatus.FOUND, artwork=artwork, matched_count=1))

@@ -16,7 +16,16 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    Image,
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from artbot.domain import Artwork
 from artbot.messages import MISSING_VALUE
@@ -77,13 +86,13 @@ def _artwork_story(
 ) -> list[object]:
     story: list[object] = []
 
-    artwork_images = _build_images(
+    artwork_images = _build_image_flowables(
         _artwork_image_urls(artwork),
         request_timeout_seconds,
         max_height=118 * mm,
     )
     if artwork_images:
-        story.extend(artwork_images)
+        story.extend(_with_image_spacing(artwork_images))
     else:
         story.append(Paragraph(" ", styles["ImagePlaceholder"]))
     story.append(Spacer(1, 9 * mm))
@@ -91,6 +100,9 @@ def _artwork_story(
     for value, style_name in _artwork_text_lines(artwork):
         story.append(Paragraph(_pdf_text(value), styles[style_name]))
         story.append(Spacer(1, 3 * mm))
+
+    if artwork.provenance:
+        story.extend(_provenance_story(artwork.provenance, styles))
 
     if artwork.expertise_image_urls:
         story.extend(
@@ -126,8 +138,6 @@ def _artwork_text_lines(artwork: Artwork) -> list[tuple[str, str]]:
         lines.append((artwork.size, "ArtworkText"))
     if artwork.year:
         lines.append((artwork.year, "ArtworkText"))
-    if artwork.provenance:
-        lines.append((artwork.provenance, "ArtworkText"))
     if not lines:
         lines.append((MISSING_VALUE, "ArtworkText"))
     return lines
@@ -148,7 +158,7 @@ def _section_images(
     request_timeout_seconds: float,
     styles: dict[str, ParagraphStyle],
 ) -> list[object]:
-    images = _build_images(
+    images = _build_image_flowables(
         image_urls,
         request_timeout_seconds,
         max_height=190 * mm,
@@ -157,19 +167,73 @@ def _section_images(
         return []
 
     return [
-        Spacer(1, 5 * mm),
-        Paragraph(_pdf_text(title), styles["SectionTitle"]),
-        Spacer(1, 4 * mm),
-        *images,
+        KeepTogether(
+            [
+                Spacer(1, 5 * mm),
+                Paragraph(_pdf_text(title), styles["SectionTitle"]),
+                Spacer(1, 4 * mm),
+                images[0],
+            ]
+        ),
+        Spacer(1, 6 * mm),
+        *_with_image_spacing(images[1:]),
     ]
 
 
-def _build_images(
+def _provenance_story(
+    provenance: str,
+    styles: dict[str, ParagraphStyle],
+) -> list[object]:
+    paragraphs = _text_paragraphs(provenance)
+    if not paragraphs:
+        return []
+
+    story: list[object] = [
+        KeepTogether(
+            [
+                Spacer(1, 5 * mm),
+                Paragraph(_pdf_text("Провенанс/публикации/литература"), styles["SectionTitle"]),
+                Spacer(1, 2 * mm),
+                Paragraph(_pdf_text(paragraphs[0]), styles["ArtworkText"]),
+            ]
+        ),
+        Spacer(1, 3 * mm),
+    ]
+    for paragraph in paragraphs[1:]:
+        story.append(Paragraph(_pdf_text(paragraph), styles["ArtworkText"]))
+        story.append(Spacer(1, 3 * mm))
+    return story
+
+
+def _text_paragraphs(value: str) -> list[str]:
+    paragraphs: list[str] = []
+    current_lines: list[str] = []
+    for line in value.splitlines():
+        stripped = line.strip()
+        if stripped:
+            current_lines.append(stripped)
+        elif current_lines:
+            paragraphs.append("\n".join(current_lines))
+            current_lines = []
+    if current_lines:
+        paragraphs.append("\n".join(current_lines))
+    return paragraphs
+
+
+def _with_image_spacing(images: Iterable[Image]) -> list[object]:
+    flowables: list[object] = []
+    for image in images:
+        flowables.append(image)
+        flowables.append(Spacer(1, 6 * mm))
+    return flowables
+
+
+def _build_image_flowables(
     image_urls: Iterable[str],
     request_timeout_seconds: float,
     max_height: float,
-) -> list[object]:
-    flowables: list[object] = []
+) -> list[Image]:
+    images: list[Image] = []
     for image_url in image_urls:
         image_flowable = _build_image(
             image_url,
@@ -177,9 +241,8 @@ def _build_images(
             max_height=max_height,
         )
         if image_flowable:
-            flowables.append(image_flowable)
-            flowables.append(Spacer(1, 6 * mm))
-    return flowables
+            images.append(image_flowable)
+    return images
 
 
 def _build_image(
@@ -272,8 +335,8 @@ def _styles(font_name: str, bold_font_name: str) -> dict[str, ParagraphStyle]:
             "SectionTitle",
             parent=base["Heading2"],
             fontName=bold_font_name,
-            fontSize=11,
-            leading=15,
+            fontSize=12,
+            leading=16,
             alignment=TA_LEFT,
             textColor=colors.HexColor("#111111"),
             spaceBefore=2 * mm,

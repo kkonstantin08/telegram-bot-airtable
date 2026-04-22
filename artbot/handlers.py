@@ -215,7 +215,7 @@ async def _process_row_id_query(
 
     artwork = result.artwork
     caption = format_artwork_caption(artwork)
-    await _send_card(message, artwork.image_url, caption, request_timeout_seconds)
+    await _send_card(message, _preview_image_url(artwork), caption, request_timeout_seconds)
 
     try:
         pdf_bytes = await asyncio.to_thread(
@@ -319,6 +319,13 @@ def _safe_filename_part(value: str) -> str:
 
 def _chunked(items: list[Artwork], chunk_size: int) -> list[list[Artwork]]:
     return [items[index : index + chunk_size] for index in range(0, len(items), chunk_size)]
+
+
+def _preview_image_url(artwork: Artwork) -> str | None:
+    for image_url in artwork.image_urls:
+        if image_url:
+            return image_url
+    return artwork.image_url
 
 
 def _extract_chat_id(message: Any) -> int | None:
