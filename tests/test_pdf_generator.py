@@ -1,7 +1,13 @@
+import pytest
+from reportlab.platypus import KeepTogether, Spacer
+
 from artbot.domain import Artwork
 from artbot.pdf_generator import (
     _artwork_image_urls,
     _artwork_text_lines,
+    _provenance_story,
+    _section_images,
+    _styles,
     generate_artwork_pdf,
     generate_artworks_pdf,
 )
@@ -66,7 +72,7 @@ def test_pdf_text_lines_include_values_without_labels_or_price() -> None:
 
     values = [value for value, _style in _artwork_text_lines(artwork)]
 
-    assert values == ["Object", "Artist", "Canvas", "10 x 20 cm", "2026", "Catalogue text"]
+    assert values == ["Object", "Artist", "Canvas", "10 x 20 cm", "2026"]
     assert "999999" not in values
     assert "Автор" not in values
     assert "Техника" not in values
@@ -106,3 +112,30 @@ def test_pdf_image_urls_fall_back_to_legacy_main_image() -> None:
     artwork = Artwork(row_id=8, image_url="https://example.com/main.jpg")
 
     assert _artwork_image_urls(artwork) == ("https://example.com/main.jpg",)
+
+
+def test_provenance_story_keeps_title_with_first_text_block() -> None:
+    story = _provenance_story("First paragraph\n\nSecond paragraph", _styles("Helvetica", "Helvetica-Bold"))
+
+    assert isinstance(story[0], KeepTogether)
+    assert len(story) > 2
+
+
+def test_section_images_keep_title_with_first_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("artbot.pdf_generator._build_image", lambda *_args, **_kwargs: Spacer(1, 1))
+
+    story = _section_images(
+        "Section",
+        ("https://example.com/first.jpg", "https://example.com/second.jpg"),
+        4.0,
+        _styles("Helvetica", "Helvetica-Bold"),
+    )
+
+    assert isinstance(story[0], KeepTogether)
+    assert any(isinstance(flowable, Spacer) for flowable in story[1:])
+
+
+def test_section_images_without_loaded_images_omits_title(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("artbot.pdf_generator._build_image", lambda *_args, **_kwargs: None)
+
+    assert _section_images("Section", ("https://example.com/missing.jpg",), 4.0, _styles("Helvetica", "Helvetica-Bold")) == []
