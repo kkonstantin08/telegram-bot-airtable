@@ -40,6 +40,10 @@ def load_artworks_from_fixture(path: str | Path) -> list[Artwork]:
             year=item.get("year"),
             price=item.get("price"),
             image_url=item.get("image_url"),
+            image_urls=tuple(item.get("image_urls") or ()),
+            expertise_image_urls=tuple(item.get("expertise_image_urls") or ()),
+            framing_image_urls=tuple(item.get("framing_image_urls") or ()),
+            provenance=item.get("provenance"),
             airtable_record_id=item.get("airtable_record_id"),
         )
         for item in raw_items

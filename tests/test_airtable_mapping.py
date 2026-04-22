@@ -1,4 +1,9 @@
-from artbot.airtable_repository import _extract_image_url, _record_to_artwork, _to_text
+from artbot.airtable_repository import (
+    _extract_image_url,
+    _extract_image_urls,
+    _record_to_artwork,
+    _to_text,
+)
 from artbot.config import AirtableFieldMapping
 
 
@@ -11,6 +16,9 @@ FIELDS = AirtableFieldMapping(
     year="Year",
     price="Price",
     image="Image",
+    expertise="Экспертиза",
+    framing="Обрамление",
+    provenance="Провенанс/публикации/литература",
 )
 
 
@@ -24,7 +32,16 @@ def test_record_to_artwork_maps_configured_fields() -> None:
             "Size": "10 x 20",
             "Year": 2026,
             "Price": 1000,
-            "Image": [{"url": "https://example.com/image.jpg"}],
+            "Image": [
+                {"url": "https://example.com/image.jpg"},
+                {"url": "https://example.com/detail.jpg"},
+            ],
+            "Экспертиза": [
+                {"url": "https://example.com/expertise-1.jpg"},
+                {"url": "https://example.com/expertise-2.jpg"},
+            ],
+            "Обрамление": [{"url": "https://example.com/frame.jpg"}],
+            "Провенанс/публикации/литература": "Published in catalogue",
         },
     }
 
@@ -36,6 +53,16 @@ def test_record_to_artwork_maps_configured_fields() -> None:
     assert artwork.year == "2026"
     assert artwork.price == "1000"
     assert artwork.image_url == "https://example.com/image.jpg"
+    assert artwork.image_urls == (
+        "https://example.com/image.jpg",
+        "https://example.com/detail.jpg",
+    )
+    assert artwork.expertise_image_urls == (
+        "https://example.com/expertise-1.jpg",
+        "https://example.com/expertise-2.jpg",
+    )
+    assert artwork.framing_image_urls == ("https://example.com/frame.jpg",)
+    assert artwork.provenance == "Published in catalogue"
     assert artwork.airtable_record_id == "rec123"
 
 
@@ -49,3 +76,15 @@ def test_extract_image_url_supports_attachment_and_text_url() -> None:
     assert _extract_image_url([{"url": "https://example.com/a.jpg"}]) == "https://example.com/a.jpg"
     assert _extract_image_url(" https://example.com/b.jpg ") == "https://example.com/b.jpg"
     assert _extract_image_url([]) is None
+
+
+def test_extract_image_urls_supports_multiple_attachments() -> None:
+    assert _extract_image_urls(
+        [
+            {"url": "https://example.com/a.jpg"},
+            {"url": " https://example.com/b.jpg "},
+            {"filename": "missing-url.jpg"},
+        ]
+    ) == ("https://example.com/a.jpg", "https://example.com/b.jpg")
+    assert _extract_image_urls(" https://example.com/c.jpg ") == ("https://example.com/c.jpg",)
+    assert _extract_image_urls([]) == ()

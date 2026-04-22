@@ -14,6 +14,10 @@ class Artwork:
     year: str | None = None
     price: str | None = None
     image_url: str | None = None
+    image_urls: tuple[str, ...] = ()
+    expertise_image_urls: tuple[str, ...] = ()
+    framing_image_urls: tuple[str, ...] = ()
+    provenance: str | None = None
     airtable_record_id: str | None = None
 
 

@@ -16,6 +16,9 @@ class AirtableFieldMapping:
     year: str
     price: str
     image: str
+    expertise: str = "Экспертиза"
+    framing: str = "Обрамление"
+    provenance: str = "Провенанс/публикации/литература"
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,12 @@ class Settings:
                 year=_env("AIRTABLE_YEAR_FIELD", "Year"),
                 price=_env("AIRTABLE_PRICE_FIELD", "Price"),
                 image=_env("AIRTABLE_IMAGE_FIELD", "Image"),
+                expertise=_env("AIRTABLE_EXPERTISE_FIELD", "Экспертиза"),
+                framing=_env("AIRTABLE_FRAMING_FIELD", "Обрамление"),
+                provenance=_env(
+                    "AIRTABLE_PROVENANCE_FIELD",
+                    "Провенанс/публикации/литература",
+                ),
             ),
             log_level=_env("LOG_LEVEL", "INFO").upper(),
             request_timeout_seconds=float(_env("REQUEST_TIMEOUT_SECONDS", "4")),

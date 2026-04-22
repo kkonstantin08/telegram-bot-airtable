@@ -79,6 +79,9 @@ AIRTABLE_SIZE_FIELD=Size
 AIRTABLE_YEAR_FIELD=Year
 AIRTABLE_PRICE_FIELD=Price
 AIRTABLE_IMAGE_FIELD=Image
+AIRTABLE_EXPERTISE_FIELD=Экспертиза
+AIRTABLE_FRAMING_FIELD=Обрамление
+AIRTABLE_PROVENANCE_FIELD=Провенанс/публикации/литература
 ```
 
 `AIRTABLE_ROW_ID_FIELD` должен указывать на стабильное числовое поле Airtable. Рекомендуемый тип поля: `Autonumber`. Не используйте визуальный номер строки в интерфейсе Airtable.
@@ -96,7 +99,10 @@ AIRTABLE_IMAGE_FIELD=Image
 | `Size` | Single line text | размер |
 | `Year` | Number или Single line text | год |
 | `Price` | Currency или Single line text | цена |
-| `Image` | Attachment или URL text | изображение |
+| `Image` | Attachment или URL text | одно или несколько изображений работы |
+| `Экспертиза` | Attachment | одно или несколько фото документов |
+| `Обрамление` | Attachment | одно или несколько фото обрамления, необязательное поле |
+| `Провенанс/публикации/литература` | Long text | текст для PDF без подписи поля |
 
 Названия можно менять, но тогда нужно поменять соответствующие переменные `AIRTABLE_*_FIELD` в `.env`.
 
@@ -189,7 +195,10 @@ docker compose up -d
 - Основной идентификатор записи хранится в отдельном стабильном числовом поле Airtable.
 - Рекомендуемое имя этого поля: `Row Number`.
 - Рекомендуемый тип этого поля: `Autonumber`.
-- Поле `Image` может быть Airtable Attachment или текстовой URL-ссылкой.
+- Поле `Image` может быть Airtable Attachment с одним или несколькими файлами или текстовой URL-ссылкой.
+- В Telegram отправляется первое изображение из `Image`; в PDF выводятся все изображения из `Image`.
+- Поля `Экспертиза` и `Обрамление` могут содержать несколько attachment-фото и выводятся в PDF отдельными разделами.
+- Поле `Провенанс/публикации/литература` выводится в PDF как обычный текст без подписи.
 - Если изображение отсутствует или не загружается, бот все равно отправляет текст и PDF.
 - Если отдельные поля пустые, бот подставляет `не указано`.
 - Live e2e с Telegram и Airtable требует реальных `BOT_TOKEN`, Airtable PAT и заполненной базы.

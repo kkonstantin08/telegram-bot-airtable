@@ -78,6 +78,7 @@ def _record_to_artwork(
     fields: AirtableFieldMapping,
 ) -> Artwork:
     values = record.get("fields", {})
+    image_urls = _extract_image_urls(values.get(fields.image))
     return Artwork(
         row_id=row_id,
         title=_to_text(values.get(fields.title)),
@@ -86,7 +87,11 @@ def _record_to_artwork(
         size=_to_text(values.get(fields.size)),
         year=_to_text(values.get(fields.year)),
         price=_to_text(values.get(fields.price)),
-        image_url=_extract_image_url(values.get(fields.image)),
+        image_url=image_urls[0] if image_urls else None,
+        image_urls=image_urls,
+        expertise_image_urls=_extract_image_urls(values.get(fields.expertise)),
+        framing_image_urls=_extract_image_urls(values.get(fields.framing)),
+        provenance=_to_text(values.get(fields.provenance)),
         airtable_record_id=record.get("id"),
     )
 
@@ -123,20 +128,30 @@ def _to_text(value: Any) -> str | None:
 
 
 def _extract_image_url(value: Any) -> str | None:
+    urls = _extract_image_urls(value)
+    return urls[0] if urls else None
+
+
+def _extract_image_urls(value: Any) -> tuple[str, ...]:
     if not value:
-        return None
+        return ()
 
     if isinstance(value, str):
         stripped = value.strip()
-        return stripped or None
+        return (stripped,) if stripped else ()
 
     if isinstance(value, list):
+        urls: list[str] = []
         for item in value:
-            if isinstance(item, dict) and item.get("url"):
-                return str(item["url"]).strip()
-        return None
+            url = item.get("url") if isinstance(item, dict) else item
+            if url:
+                stripped = str(url).strip()
+                if stripped:
+                    urls.append(stripped)
+        return tuple(urls)
 
     if isinstance(value, dict) and value.get("url"):
-        return str(value["url"]).strip()
+        stripped = str(value["url"]).strip()
+        return (stripped,) if stripped else ()
 
-    return None
+    return ()

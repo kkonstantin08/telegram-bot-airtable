@@ -1,5 +1,10 @@
 from artbot.domain import Artwork
-from artbot.pdf_generator import _artwork_text_lines, generate_artwork_pdf, generate_artworks_pdf
+from artbot.pdf_generator import (
+    _artwork_image_urls,
+    _artwork_text_lines,
+    generate_artwork_pdf,
+    generate_artworks_pdf,
+)
 
 
 def test_pdf_generation_without_image_produces_pdf_bytes() -> None:
@@ -56,11 +61,12 @@ def test_pdf_text_lines_include_values_without_labels_or_price() -> None:
         year="2026",
         price="999999",
         image_url=None,
+        provenance="Catalogue text",
     )
 
     values = [value for value, _style in _artwork_text_lines(artwork)]
 
-    assert values == ["Object", "Artist", "Canvas", "10 x 20 cm", "2026"]
+    assert values == ["Object", "Artist", "Canvas", "10 x 20 cm", "2026", "Catalogue text"]
     assert "999999" not in values
     assert "Автор" not in values
     assert "Техника" not in values
@@ -78,3 +84,25 @@ def test_multi_artwork_pdf_generation_produces_pdf_bytes() -> None:
 
     assert pdf_bytes.startswith(b"%PDF")
     assert len(pdf_bytes) > 1000
+
+
+def test_pdf_image_urls_prefer_all_airtable_images() -> None:
+    artwork = Artwork(
+        row_id=7,
+        image_url="https://example.com/main.jpg",
+        image_urls=(
+            "https://example.com/main.jpg",
+            "https://example.com/detail.jpg",
+        ),
+    )
+
+    assert _artwork_image_urls(artwork) == (
+        "https://example.com/main.jpg",
+        "https://example.com/detail.jpg",
+    )
+
+
+def test_pdf_image_urls_fall_back_to_legacy_main_image() -> None:
+    artwork = Artwork(row_id=8, image_url="https://example.com/main.jpg")
+
+    assert _artwork_image_urls(artwork) == ("https://example.com/main.jpg",)

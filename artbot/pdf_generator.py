@@ -77,9 +77,13 @@ def _artwork_story(
 ) -> list[object]:
     story: list[object] = []
 
-    image_flowable = _build_image(artwork.image_url, request_timeout_seconds)
-    if image_flowable:
-        story.append(image_flowable)
+    artwork_images = _build_images(
+        _artwork_image_urls(artwork),
+        request_timeout_seconds,
+        max_height=118 * mm,
+    )
+    if artwork_images:
+        story.extend(artwork_images)
     else:
         story.append(Paragraph(" ", styles["ImagePlaceholder"]))
     story.append(Spacer(1, 9 * mm))
@@ -87,6 +91,25 @@ def _artwork_story(
     for value, style_name in _artwork_text_lines(artwork):
         story.append(Paragraph(_pdf_text(value), styles[style_name]))
         story.append(Spacer(1, 3 * mm))
+
+    if artwork.expertise_image_urls:
+        story.extend(
+            _section_images(
+                "Экспертиза",
+                artwork.expertise_image_urls,
+                request_timeout_seconds,
+                styles,
+            )
+        )
+    if artwork.framing_image_urls:
+        story.extend(
+            _section_images(
+                "Обрамление",
+                artwork.framing_image_urls,
+                request_timeout_seconds,
+                styles,
+            )
+        )
 
     return story
 
@@ -103,12 +126,67 @@ def _artwork_text_lines(artwork: Artwork) -> list[tuple[str, str]]:
         lines.append((artwork.size, "ArtworkText"))
     if artwork.year:
         lines.append((artwork.year, "ArtworkText"))
+    if artwork.provenance:
+        lines.append((artwork.provenance, "ArtworkText"))
     if not lines:
         lines.append((MISSING_VALUE, "ArtworkText"))
     return lines
 
 
-def _build_image(image_url: str | None, request_timeout_seconds: float) -> Image | None:
+def _artwork_image_urls(artwork: Artwork) -> tuple[str, ...]:
+    urls = tuple(url for url in artwork.image_urls if url)
+    if urls:
+        return urls
+    if artwork.image_url:
+        return (artwork.image_url,)
+    return ()
+
+
+def _section_images(
+    title: str,
+    image_urls: tuple[str, ...],
+    request_timeout_seconds: float,
+    styles: dict[str, ParagraphStyle],
+) -> list[object]:
+    images = _build_images(
+        image_urls,
+        request_timeout_seconds,
+        max_height=190 * mm,
+    )
+    if not images:
+        return []
+
+    return [
+        Spacer(1, 5 * mm),
+        Paragraph(_pdf_text(title), styles["SectionTitle"]),
+        Spacer(1, 4 * mm),
+        *images,
+    ]
+
+
+def _build_images(
+    image_urls: Iterable[str],
+    request_timeout_seconds: float,
+    max_height: float,
+) -> list[object]:
+    flowables: list[object] = []
+    for image_url in image_urls:
+        image_flowable = _build_image(
+            image_url,
+            request_timeout_seconds,
+            max_height=max_height,
+        )
+        if image_flowable:
+            flowables.append(image_flowable)
+            flowables.append(Spacer(1, 6 * mm))
+    return flowables
+
+
+def _build_image(
+    image_url: str | None,
+    request_timeout_seconds: float,
+    max_height: float = 118 * mm,
+) -> Image | None:
     if not image_url:
         return None
 
@@ -122,8 +200,9 @@ def _build_image(image_url: str | None, request_timeout_seconds: float) -> Image
         image_bytes = response.content
         reader = ImageReader(BytesIO(image_bytes))
         width, height = reader.getSize()
+        if width <= 0 or height <= 0:
+            return None
         max_width = A4[0] - 36 * mm
-        max_height = 118 * mm
         scale = min(max_width / width, max_height / height)
         return Image(BytesIO(image_bytes), width=width * scale, height=height * scale, hAlign="CENTER")
     except Exception as exc:
@@ -188,6 +267,16 @@ def _styles(font_name: str, bold_font_name: str) -> dict[str, ParagraphStyle]:
             leading=17,
             alignment=TA_LEFT,
             textColor=colors.HexColor("#111111"),
+        ),
+        "SectionTitle": ParagraphStyle(
+            "SectionTitle",
+            parent=base["Heading2"],
+            fontName=bold_font_name,
+            fontSize=11,
+            leading=15,
+            alignment=TA_LEFT,
+            textColor=colors.HexColor("#111111"),
+            spaceBefore=2 * mm,
         ),
     }
 

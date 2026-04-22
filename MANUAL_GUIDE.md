@@ -129,7 +129,10 @@ AIRTABLE_TABLE_NAME=Objects
 | `Size` | Single line text | `80 x 60 см` |
 | `Year` | Number или Single line text | `2024` |
 | `Price` | Currency или Single line text | `250 000 ₽` |
-| `Image` | Attachment | файл изображения |
+| `Image` | Attachment | одно или несколько изображений работы |
+| `Экспертиза` | Attachment | одно или несколько фото документов |
+| `Обрамление` | Attachment | одно или несколько фото обрамления, можно оставить пустым |
+| `Провенанс/публикации/литература` | Long text | текст для PDF без подписи поля |
 
 ### Как создать `Row Number`
 
@@ -293,6 +296,9 @@ AIRTABLE_SIZE_FIELD=Size
 AIRTABLE_YEAR_FIELD=Year
 AIRTABLE_PRICE_FIELD=Price
 AIRTABLE_IMAGE_FIELD=Image
+AIRTABLE_EXPERTISE_FIELD=Экспертиза
+AIRTABLE_FRAMING_FIELD=Обрамление
+AIRTABLE_PROVENANCE_FIELD=Провенанс/публикации/литература
 
 LOG_LEVEL=INFO
 REQUEST_TIMEOUT_SECONDS=4
@@ -476,7 +482,10 @@ abc
    - `Size`,
    - `Year`,
    - `Price`,
-   - `Image`.
+   - `Image`,
+   - `Экспертиза`,
+   - `Обрамление`,
+   - `Провенанс/публикации/литература`.
 4. Не редактируйте `Row Number`, если это `Autonumber`.
 5. Для проверки отправьте боту row ID одной реальной записи.
 
@@ -650,6 +659,9 @@ AIRTABLE_SIZE_FIELD=Size
 AIRTABLE_YEAR_FIELD=Year
 AIRTABLE_PRICE_FIELD=Price
 AIRTABLE_IMAGE_FIELD=Image
+AIRTABLE_EXPERTISE_FIELD=Экспертиза
+AIRTABLE_FRAMING_FIELD=Обрамление
+AIRTABLE_PROVENANCE_FIELD=Провенанс/публикации/литература
 LOG_LEVEL=INFO
 REQUEST_TIMEOUT_SECONDS=4
 PDF_FONT_PATH=
