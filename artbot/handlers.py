@@ -37,6 +37,11 @@ PdfGenerator = Callable[..., bytes]
 
 router = Router()
 
+AIRTABLE_PERMISSION_ERROR_TEXT = (
+    "Airtable отклонил доступ к таблице. "
+    "Проверьте права токена (PAT) на эту base/table и scope data.records:read."
+)
+
 
 class InMemoryRequestGuard:
     def __init__(self) -> None:
@@ -194,7 +199,14 @@ async def _process_row_id_query(
 
     try:
         result = await asyncio.to_thread(repository.find_by_row_id, row_id)
-    except Exception:
+    except Exception as exc:
+        if _is_airtable_permissions_error(exc):
+            logger.exception(
+                "Airtable access denied for row lookup: row_id=%s status=403 type=INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND",
+                row_id,
+            )
+            await message.answer(AIRTABLE_PERMISSION_ERROR_TEXT)
+            return
         logger.exception("Airtable lookup failed for row_id=%s", row_id)
         await message.answer(AIRTABLE_ERROR_TEXT)
         return
@@ -249,7 +261,14 @@ async def _process_author_query(
 
     try:
         artworks = await asyncio.to_thread(repository.find_by_author_query, normalized_query)
-    except Exception:
+    except Exception as exc:
+        if _is_airtable_permissions_error(exc):
+            logger.exception(
+                "Airtable access denied for author lookup: query=%s status=403 type=INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND",
+                normalized_query,
+            )
+            await message.answer(AIRTABLE_PERMISSION_ERROR_TEXT)
+            return
         logger.exception("Airtable author lookup failed for query=%s", normalized_query)
         await message.answer(AIRTABLE_ERROR_TEXT)
         return
@@ -341,3 +360,43 @@ def _download_image_bytes(image_url: str, request_timeout_seconds: float) -> byt
     )
     response.raise_for_status()
     return response.content
+
+
+def _is_airtable_permissions_error(exc: Exception) -> bool:
+    for current in _iter_exception_chain(exc):
+        if not isinstance(current, requests.exceptions.HTTPError):
+            continue
+        response = current.response
+        if response is None or response.status_code != 403:
+            continue
+        if _extract_airtable_error_type(response) == "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND":
+            return True
+    return False
+
+
+def _iter_exception_chain(exc: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    visited: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in visited:
+        chain.append(current)
+        visited.add(id(current))
+        current = current.__cause__ or current.__context__
+    return chain
+
+
+def _extract_airtable_error_type(response: requests.Response) -> str | None:
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return None
+    error_type = error.get("type")
+    if isinstance(error_type, str):
+        return error_type
+    return None

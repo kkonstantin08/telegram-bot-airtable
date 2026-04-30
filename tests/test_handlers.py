@@ -4,9 +4,16 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import requests
 
 from artbot.domain import Artwork, ArtworkRepository, LookupResult, LookupStatus
-from artbot.handlers import InMemoryRequestGuard, process_user_text, send_help_message, send_start_message
+from artbot.handlers import (
+    AIRTABLE_PERMISSION_ERROR_TEXT,
+    InMemoryRequestGuard,
+    process_user_text,
+    send_help_message,
+    send_start_message,
+)
 from artbot.messages import (
     AIRTABLE_ERROR_TEXT,
     AUTHOR_NOT_FOUND_TEXT,
@@ -64,12 +71,33 @@ class RaisingRepository(FakeRepository):
         raise RuntimeError("boom")
 
 
+class PermissionDeniedRepository(FakeRepository):
+    def find_by_row_id(self, row_id: int) -> LookupResult:
+        self.row_queries.append(row_id)
+        raise _airtable_permission_error()
+
+    def find_by_author_query(self, query: str) -> list[Artwork]:
+        self.author_queries.append(query)
+        raise _airtable_permission_error()
+
+
 def fake_pdf_generator(*args: Any, **kwargs: Any) -> bytes:
     return b"%PDF-1.4\n%single\n"
 
 
 def fake_artworks_pdf_generator(*args: Any, **kwargs: Any) -> bytes:
     return b"%PDF-1.4\nmulti\n"
+
+
+def _airtable_permission_error() -> requests.exceptions.HTTPError:
+    response = requests.Response()
+    response.status_code = 403
+    response.url = "https://api.airtable.com/v0/app123/table123"
+    response._content = (
+        b'{"error":{"type":"INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND","message":"Invalid permissions"}}'
+    )
+    response.headers["Content-Type"] = "application/json"
+    return requests.exceptions.HTTPError("403 Client Error: Forbidden", response=response)
 
 
 @pytest.mark.asyncio
@@ -395,3 +423,28 @@ async def test_guard_releases_chat_after_author_lookup_error() -> None:
     assert first_message.events == [{"type": "text", "text": AIRTABLE_ERROR_TEXT}]
     assert healthy_repo.author_queries == ["Иванова"]
     assert second_message.events[-1]["filename"] == "artworks_Иванова.pdf"
+@pytest.mark.asyncio
+async def test_row_lookup_permission_error_returns_specific_message() -> None:
+    repo = PermissionDeniedRepository()
+    message = FakeMessage("16")
+
+    await process_user_text(message, repo, pdf_generator=fake_pdf_generator)
+
+    assert message.events == [
+        {"type": "text", "text": ROW_QUERY_ACCEPTED_TEXT},
+        {"type": "text", "text": AIRTABLE_PERMISSION_ERROR_TEXT},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_author_lookup_permission_error_returns_specific_message() -> None:
+    repo = PermissionDeniedRepository()
+    message = FakeMessage("Povzner")
+
+    await process_user_text(
+        message,
+        repo,
+        artworks_pdf_generator=fake_artworks_pdf_generator,
+    )
+
+    assert message.events == [{"type": "text", "text": AIRTABLE_PERMISSION_ERROR_TEXT}]
